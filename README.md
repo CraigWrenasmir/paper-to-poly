@@ -26,7 +26,7 @@ Single file (`index.html`), no server and no API keys. Everything runs in the br
 
 Libraries (three.js, delaunator) load from jsDelivr, so the page needs to be online.
 
-## Poly Me (`me.html`)
+## Make Me Low Poly (`me.html`)
 
 Take a photo of someone in a room. The person is rebuilt from shaded triangles and the room is left as it was.
 

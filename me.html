@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Poly Me">
+<meta name="apple-mobile-web-app-title" content="Make Me Low Poly">
 <meta name="theme-color" content="#1d2147">
-<title>Poly Me</title>
+<title>Make Me Low Poly</title>
 <style>
 :root{
   --ink:#1d2147; --paper:#fff8ea; --coral:#ff6a4d; --sun:#ffc93c; --mint:#5fd6b0; --sky:#8ec5ff;
@@ -67,7 +67,7 @@ input[type=range]{width:100%;accent-color:var(--coral);height:28px;margin:0}
 
 <div id="stage">
   <div id="top">
-    <h1>Poly Me</h1>
+    <h1>Make Me Low Poly</h1>
     <div id="count">0 triangles</div>
   </div>
   <div id="view"><canvas id="out"></canvas></div>
@@ -99,7 +99,7 @@ input[type=range]{width:100%;accent-color:var(--coral);height:28px;margin:0}
         <polygon points="40,56 60,56 50,96" fill="#8ec5ff" stroke="#1d2147" stroke-width="3" stroke-linejoin="round"/>
       </svg>
     </div>
-    <h2>Poly Me</h2>
+    <h2>Make Me Low Poly</h2>
     <p>Take a photo of someone in a room. They turn low-poly. The room stays real.</p>
     <button class="btn big go" id="bCam">Take a photo</button>
     <button class="btn big" id="bPick">Choose a photo</button>
@@ -353,11 +353,11 @@ peek.addEventListener('pointerup',unpeek); peek.addEventListener('pointercancel'
 $('bPic').onclick=()=>{
   if(!S.ready) return;
   $('out').toBlob(async blob=>{
-    const file=new File([blob],'poly-me.jpg',{type:'image/jpeg'});
+    const file=new File([blob],'make-me-low-poly.jpg',{type:'image/jpeg'});
     if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.maxTouchPoints>1){
       try{ await navigator.share({files:[file]}); return; }catch(e){ if(e.name==='AbortError') return; }
     }
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='poly-me.jpg'; document.body.appendChild(a); a.click(); a.remove();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='make-me-low-poly.jpg'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),20000);
   },'image/jpeg',.93);
 };
