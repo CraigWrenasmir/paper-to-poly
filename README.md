@@ -25,3 +25,16 @@ Single file (`index.html`), no server and no API keys. Everything runs in the br
 `index.html?sample` loads a built-in sample drawing. Extra options: `&detail=0-100`, `&look=drawing`, `&still`, `&turn=45`, `&fix`.
 
 Libraries (three.js, delaunator) load from jsDelivr, so the page needs to be online.
+
+## Poly Me (`me.html`)
+
+Take a photo of someone in a room. The person is rebuilt from shaded triangles and the room is left as it was.
+
+- The person is found on the device with MediaPipe's selfie segmentation model (hair, face, skin, clothes). No photo leaves the device.
+- Points follow the outline and the strong edges in the photo, with finer triangles on the face.
+- Each triangle takes the average colour underneath it, then is lit as a facet of a puffed-up body shape.
+- Controls: Chunky / Detailed, Smooth / Bumpy, Lines, Room too (low-poly everything), hold to see the real photo, Save picture.
+
+The first photo downloads the model (about 16 MB), so it takes a little longer.
+
+Testing: `me.html?test=<image url>` (the image host must allow cross-origin loading), plus `&detail=`, `&bump=`, `&lines`, `&room`.
