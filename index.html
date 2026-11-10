@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Paper to Poly">
+<meta name="theme-color" content="#1d2147">
+<title>Paper to Poly</title>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<style>
+:root{
+  --ink:#1d2147; --paper:#fff8ea; --coral:#ff6a4d; --sun:#ffc93c; --mint:#5fd6b0; --sky:#8ec5ff;
+  --font: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", system-ui, sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);font-family:var(--font);color:var(--ink);
+  -webkit-user-select:none;user-select:none;touch-action:manipulation}
+button{font:inherit;color:inherit;cursor:pointer}
+
+#stage{position:fixed;inset:0;background:linear-gradient(#ffd9a8,#ff8f70)}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+.btn{border:3px solid var(--ink);background:var(--paper);border-radius:16px;padding:10px 16px;font-weight:800;
+  font-size:16px;box-shadow:0 4px 0 var(--ink);transition:transform .06s, box-shadow .06s;white-space:nowrap}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.btn.on{background:var(--sun)}
+.btn.go{background:var(--coral);color:#fff}
+.btn.big{font-size:22px;padding:18px 24px;border-radius:22px;width:100%}
+
+#top{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 0}
+#top h1{margin:0;font-size:20px;font-weight:900;color:var(--ink);background:var(--paper);border:3px solid var(--ink);
+  border-radius:14px;padding:6px 12px;transform:rotate(-2deg)}
+#count{margin-left:auto;font-weight:800;font-size:14px;background:var(--ink);color:var(--paper);border-radius:999px;padding:6px 12px}
+
+#panel{position:absolute;left:0;right:0;bottom:0;padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:10px;align-items:center}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:760px}
+.sliders{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;width:100%;max-width:620px;
+  background:var(--paper);border:3px solid var(--ink);border-radius:18px;padding:10px 14px;box-shadow:0 4px 0 var(--ink)}
+.sl{display:flex;flex-direction:column;gap:2px;font-weight:800;font-size:13px}
+.sl span{display:flex;justify-content:space-between}
+input[type=range]{width:100%;accent-color:var(--coral);height:28px;margin:0}
+
+.sheet{position:fixed;inset:0;background:var(--ink);display:flex;align-items:center;justify-content:center;padding:20px;z-index:5}
+.sheet[hidden]{display:none}
+.card{background:var(--paper);border:4px solid var(--ink);border-radius:28px;padding:26px 22px;width:min(440px,100%);
+  box-shadow:0 8px 0 #0b0d24;display:flex;flex-direction:column;gap:14px;text-align:center}
+.card h2{margin:0;font-size:34px;font-weight:900;line-height:1}
+.card p{margin:0;font-size:16px;font-weight:600;line-height:1.35}
+.logo{display:flex;justify-content:center;align-items:center;gap:12px;font-size:30px;font-weight:900}
+.logo svg{width:84px;height:84px}
+.tips{text-align:left;font-size:14px;font-weight:600;background:#fff;border:2px dashed var(--ink);border-radius:14px;padding:10px 14px;margin:0;list-style:none}
+.tips li{padding:2px 0}
+.link{background:none;border:0;text-decoration:underline;font-weight:700;font-size:15px;padding:6px}
+
+#fix .card{width:min(620px,100%);max-height:100%;padding:16px}
+#fixWrap{flex:1;min-height:0;display:flex;justify-content:center}
+#fixCv{max-width:100%;max-height:52vh;border:3px solid var(--ink);border-radius:14px;touch-action:none;background:#000}
+
+#toast{position:fixed;left:50%;top:22%;transform:translateX(-50%);background:var(--sun);border:3px solid var(--ink);
+  border-radius:16px;padding:12px 18px;font-weight:800;z-index:9;max-width:86vw;text-align:center;box-shadow:0 4px 0 var(--ink)}
+#toast[hidden]{display:none}
+@media (max-width:520px){ .btn{font-size:14px;padding:9px 12px} #top h1{font-size:16px} }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <div id="top">
+    <h1>Paper to Poly</h1>
+    <div id="count">0 triangles</div>
+  </div>
+  <div id="panel">
+    <div class="sliders">
+      <label class="sl"><span><b>Chunky</b><b>Detailed</b></span><input id="detail" type="range" min="0" max="100" value="55"></label>
+      <label class="sl"><span><b>Flat</b><b>Puffy</b></span><input id="puff" type="range" min="0" max="100" value="50"></label>
+    </div>
+    <div class="row">
+      <button class="btn on" id="bSpin">Spin</button>
+      <button class="btn" id="bDance">Dance</button>
+      <button class="btn" id="bStyle">Look: Facets</button>
+      <button class="btn" id="bScene">Scene</button>
+      <button class="btn" id="bFix">Fix cut-out</button>
+    </div>
+    <div class="row">
+      <button class="btn go" id="bNew">New drawing</button>
+      <button class="btn" id="bPic">Save picture</button>
+      <button class="btn" id="bGlb">Save 3D model</button>
+      <button class="btn" id="bAR" hidden>Put it in my room</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="start">
+  <div class="card">
+    <div class="logo">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <polygon points="50,6 90,34 76,88 24,88 10,34" fill="#ffc93c" stroke="#1d2147" stroke-width="4" stroke-linejoin="round"/>
+        <polygon points="50,6 50,50 10,34" fill="#ff6a4d" stroke="#1d2147" stroke-width="3" stroke-linejoin="round"/>
+        <polygon points="50,50 90,34 76,88" fill="#5fd6b0" stroke="#1d2147" stroke-width="3" stroke-linejoin="round"/>
+        <polygon points="50,50 24,88 76,88" fill="#8ec5ff" stroke="#1d2147" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="38" cy="42" r="4" fill="#1d2147"/><circle cx="62" cy="42" r="4" fill="#1d2147"/>
+      </svg>
+    </div>
+    <h2>Paper to Poly</h2>
+    <p>Draw a character on paper. Take its photo. Watch it turn into a low-poly 3D model.</p>
+    <button class="btn big go" id="bCam">Take a photo</button>
+    <button class="btn big" id="bPick">Choose a photo</button>
+    <ul class="tips">
+      <li>Use white paper and a dark pen or bright textas.</li>
+      <li>Fill the screen with the paper. No table showing.</li>
+      <li>Join your outline up so the inside gets filled.</li>
+    </ul>
+    <button class="link" id="bSample">No drawing yet? Try a sample</button>
+    <button class="link" id="bBack" hidden>Back to my character</button>
+  </div>
+</div>
+
+<div class="sheet" id="fix" hidden>
+  <div class="card">
+    <p><b>Bright part = your character.</b> Rub with your finger to remove bits you don't want.</p>
+    <div id="fixWrap"><canvas id="fixCv"></canvas></div>
+    <label class="sl"><span><b>Pick up less</b><b>Pick up more</b></span><input id="sens" type="range" min="0" max="100" value="62"></label>
+    <div class="row">
+      <button class="btn" id="bUnrub">Undo rubbing</button>
+      <button class="btn go" id="bFixDone">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+<input id="fCam" type="file" accept="image/*" capture="environment" hidden>
+<input id="fPick" type="file" accept="image/*" hidden>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
+import Delaunator from 'https://cdn.jsdelivr.net/npm/delaunator@5.0.1/+esm';
+
+const $ = id => document.getElementById(id);
+const WORK = 420, SRC_MAX = 1400, TEX = 1024;
+const S = { ready:false, style:'facets', scene:0, spin:true, dance:false, erase:null };
+
+/* ---------- small image helpers ---------- */
+function dilate(m,w,h,r){
+  for(let k=0;k<r;k++){
+    const o=new Uint8Array(m.length);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+      const i=y*w+x;
+      if(m[i]||(x>0&&m[i-1])||(x<w-1&&m[i+1])||(y>0&&m[i-w])||(y<h-1&&m[i+w])) o[i]=1;
+    }
+    m=o;
+  }
+  return m;
+}
+function erode(m,w,h,r){
+  for(let k=0;k<r;k++){
+    const o=new Uint8Array(m.length);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+      const i=y*w+x;
+      if(m[i]&&(x===0||m[i-1])&&(x===w-1||m[i+1])&&(y===0||m[i-w])&&(y===h-1||m[i+w])) o[i]=1;
+    }
+    m=o;
+  }
+  return m;
+}
+function label(m,w,h){
+  const lab=new Int32Array(w*h), comps=[null], stack=new Int32Array(w*h);
+  for(let s=0;s<w*h;s++){
+    if(!m[s]||lab[s]) continue;
+    const id=comps.length, c={area:0,border:false};
+    let sp=0; stack[sp++]=s; lab[s]=id;
+    while(sp){
+      const i=stack[--sp], x=i%w, y=(i-x)/w; c.area++;
+      if(x===0||y===0||x===w-1||y===h-1) c.border=true;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+        const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=w||ny>=h) continue;
+        const j=ny*w+nx; if(m[j]&&!lab[j]){lab[j]=id;stack[sp++]=j;}
+      }
+    }
+    comps.push(c);
+  }
+  return {lab,comps};
+}
+function fillHoles(m,w,h){
+  const seen=new Uint8Array(w*h), stack=new Int32Array(w*h); let sp=0;
+  const push=i=>{ if(!m[i]&&!seen[i]){seen[i]=1;stack[sp++]=i;} };
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x);}
+  for(let y=0;y<h;y++){push(y*w);push(y*w+w-1);}
+  while(sp){
+    const i=stack[--sp], x=i%w, y=(i-x)/w;
+    if(x>0)push(i-1); if(x<w-1)push(i+1); if(y>0)push(i-w); if(y<h-1)push(i+w);
+  }
+  const o=new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++) o[i]=(m[i]||!seen[i])?1:0;
+  return o;
+}
+function distMap(m,w,h){
+  const d=new Float32Array(w*h), D=1.4142;
+  for(let i=0;i<w*h;i++) d[i]=m[i]?1e9:0;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const i=y*w+x; if(!d[i]) continue; let v=d[i];
+    if(x===0||y===0||x===w-1||y===h-1) v=1;
+    else{
+      v=Math.min(v,d[i-1]+1,d[i-w]+1,d[i-w-1]+D,d[i-w+1]+D);
+    }
+    d[i]=v;
+  }
+  for(let y=h-1;y>=0;y--) for(let x=w-1;x>=0;x--){
+    const i=y*w+x; if(!d[i]) continue; let v=d[i];
+    if(!(x===0||y===0||x===w-1||y===h-1)) v=Math.min(v,d[i+1]+1,d[i+w]+1,d[i+w+1]+D,d[i+w-1]+D);
+    d[i]=v;
+  }
+  return d;
+}
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* ---------- step 1: find the paper colour everywhere ---------- */
+function estimatePaper(px,w,h){
+  const cell=8, gw=Math.ceil(w/cell), gh=Math.ceil(h/cell);
+  const g=new Float32Array(gw*gh*3), lums=[];
+  for(let cy=0;cy<gh;cy++) for(let cx=0;cx<gw;cx++){
+    lums.length=0;
+    const x0=cx*cell,y0=cy*cell,x1=Math.min(w,x0+cell),y1=Math.min(h,y0+cell);
+    for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){const i=(y*w+x)*4;lums.push(px[i]*.3+px[i+1]*.59+px[i+2]*.11);}
+    const sorted=lums.slice().sort((a,b)=>a-b), thr=sorted[Math.floor(sorted.length*.7)];
+    let r=0,gg=0,b=0,n=0,k=0;
+    for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){
+      if(lums[k++]>=thr){const i=(y*w+x)*4;r+=px[i];gg+=px[i+1];b+=px[i+2];n++;}
+    }
+    const o=(cy*gw+cx)*3; g[o]=r/n;g[o+1]=gg/n;g[o+2]=b/n;
+  }
+  // The paper's lighting is smooth, so fit a gentle curved surface through the cells that look like paper.
+  // That surface carries on underneath big coloured-in areas, where no paper shows at all.
+  const N=gw*gh, basis=(k,o)=>{const u=(k%gw)/Math.max(1,gw-1)*2-1,v=((k/gw)|0)/Math.max(1,gh-1)*2-1;o[0]=1;o[1]=u;o[2]=v;o[3]=u*u;o[4]=u*v;o[5]=v*v;};
+  const solve=(A,b)=>{ for(let i=0;i<6;i++){ let m=i; for(let r=i+1;r<6;r++) if(Math.abs(A[r][i])>Math.abs(A[m][i])) m=r;
+      [A[i],A[m]]=[A[m],A[i]]; [b[i],b[m]]=[b[m],b[i]]; const d=A[i][i]||1e-9;
+      for(let r=i+1;r<6;r++){const f=A[r][i]/d; for(let c=i;c<6;c++)A[r][c]-=f*A[i][c]; b[r]-=f*b[i];} }
+    const x=new Array(6).fill(0); for(let i=5;i>=0;i--){let t=b[i]; for(let c=i+1;c<6;c++)t-=A[i][c]*x[c]; x[i]=t/(A[i][i]||1e-9);} return x; };
+  const fit=idx=>{ const co=[],B=[0,0,0,0,0,0];
+    for(let c=0;c<3;c++){ const A=Array.from({length:6},()=>new Array(6).fill(0)), b=new Array(6).fill(0);
+      for(const k of idx){ basis(k,B); const val=g[k*3+c]; for(let i=0;i<6;i++){b[i]+=B[i]*val; for(let j=0;j<6;j++)A[i][j]+=B[i]*B[j];} }
+      for(let i=0;i<6;i++)A[i][i]+=1e-6; co.push(solve(A,b)); }
+    return co; };
+  const pv=new Float32Array(N*3), B=[0,0,0,0,0,0];
+  const evalFit=co=>{ for(let k=0;k<N;k++){ basis(k,B); for(let c=0;c<3;c++){let t=0; for(let i=0;i<6;i++)t+=co[c][i]*B[i]; pv[k*3+c]=Math.max(30,t);} } };
+  let inl=Array.from({length:N},(_,k)=>k).sort((a,b)=>Math.min(g[b*3],g[b*3+1],g[b*3+2])-Math.min(g[a*3],g[a*3+1],g[a*3+2])).slice(0,Math.max(12,Math.floor(N*.4)));
+  for(let it=0;it<5;it++){
+    evalFit(fit(inl)); const nx=[];
+    for(let k=0;k<N;k++){ let ok=true; for(let c=0;c<3;c++){const r=g[k*3+c]/pv[k*3+c]; if(r<.92||r>1.12){ok=false;break;}} if(ok)nx.push(k); }
+    if(nx.length<Math.max(12,N*.05)) break; inl=nx;
+  }
+  evalFit(fit(inl));
+  // soft shadows are paper-coloured but dimmer; follow them with a slowly changing brightness gain
+  const gain=new Float32Array(N).fill(NaN);
+  for(let k=0;k<N;k++){ const a=g[k*3]/pv[k*3],b=g[k*3+1]/pv[k*3+1],c=g[k*3+2]/pv[k*3+2],m=(a+b+c)/3;
+    if(m>.55&&m<1.1&&Math.max(Math.abs(a-m),Math.abs(b-m),Math.abs(c-m))<.05*m) gain[k]=m; }
+  const R=Math.max(2,Math.round(Math.max(gw,gh)*.16)); let sm=new Float32Array(N); const win=[];
+  for(let cy=0;cy<gh;cy++) for(let cx=0;cx<gw;cx++){
+    win.length=0;
+    for(let y=Math.max(0,cy-R);y<=Math.min(gh-1,cy+R);y++) for(let x=Math.max(0,cx-R);x<=Math.min(gw-1,cx+R);x++){const v=gain[y*gw+x]; if(v===v)win.push(v);}
+    win.sort((a,b)=>a-b);
+    sm[cy*gw+cx]=win.length<4?1:Math.min(1.03,win[Math.floor((win.length-1)*.7)]);
+  }
+  for(let pass=0;pass<2;pass++){
+    const b=new Float32Array(N);
+    for(let cy=0;cy<gh;cy++) for(let cx=0;cx<gw;cx++){
+      let t=0,n=0;
+      for(let y=Math.max(0,cy-2);y<=Math.min(gh-1,cy+2);y++) for(let x=Math.max(0,cx-2);x<=Math.min(gw-1,cx+2);x++){t+=sm[y*gw+x];n++;}
+      b[cy*gw+cx]=t/n;
+    }
+    sm=b;
+  }
+  const out=new Float32Array(N*3);
+  for(let k=0;k<N;k++) for(let c=0;c<3;c++) out[k*3+c]=pv[k*3+c]*sm[k];
+  return {cell,gw,gh,grid:out};
+}
+function paperAt(P,x,y,o){
+  let fx=x/P.cell-.5, fy=y/P.cell-.5;
+  fx=Math.max(0,Math.min(P.gw-1.001,fx)); fy=Math.max(0,Math.min(P.gh-1.001,fy));
+  const x0=fx|0,y0=fy|0,tx=fx-x0,ty=fy-y0,x1=Math.min(P.gw-1,x0+1),y1=Math.min(P.gh-1,y0+1),g=P.grid;
+  for(let c=0;c<3;c++){
+    const a=g[(y0*P.gw+x0)*3+c],b=g[(y0*P.gw+x1)*3+c],d=g[(y1*P.gw+x0)*3+c],e=g[(y1*P.gw+x1)*3+c];
+    o[c]=Math.max(40,(a*(1-tx)+b*tx)*(1-ty)+(d*(1-tx)+e*tx)*ty);
+  }
+}
+// colour with the lighting divided out, then made a bit bolder
+function tone(r,g,b,p,out,o){
+  let nr=Math.min(1,r/p[0]*1.06), ng=Math.min(1,g/p[1]*1.06), nb=Math.min(1,b/p[2]*1.06);
+  nr=Math.pow(nr,1.25); ng=Math.pow(ng,1.25); nb=Math.pow(nb,1.25);
+  const l=.3*nr+.59*ng+.11*nb;
+  out[o]=Math.max(0,Math.min(255,(l+(nr-l)*1.4)*255));
+  out[o+1]=Math.max(0,Math.min(255,(l+(ng-l)*1.4)*255));
+  out[o+2]=Math.max(0,Math.min(255,(l+(nb-l)*1.4)*255));
+}
+
+/* ---------- step 2: load a photo ---------- */
+function loadSource(source){
+  const sw=source.naturalWidth||source.videoWidth||source.width, sh=source.naturalHeight||source.videoHeight||source.height;
+  const ks=Math.min(1,SRC_MAX/Math.max(sw,sh));
+  const src=document.createElement('canvas'); src.width=Math.round(sw*ks); src.height=Math.round(sh*ks);
+  src.getContext('2d').drawImage(source,0,0,src.width,src.height);
+  const kw=WORK/Math.max(src.width,src.height);
+  const w=Math.round(src.width*kw), h=Math.round(src.height*kw);
+  const wc=document.createElement('canvas'); wc.width=w; wc.height=h;
+  const wctx=wc.getContext('2d',{willReadFrequently:true}); wctx.imageSmoothingQuality='high';
+  wctx.drawImage(src,0,0,w,h);
+  const px=wctx.getImageData(0,0,w,h).data;
+  const paper=estimatePaper(px,w,h);
+  const diff=new Float32Array(w*h), norm=new Uint8ClampedArray(w*h*3), p=[0,0,0];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const i=y*w+x, q=i*4; paperAt(paper,x,y,p);
+    diff[i]=Math.max((p[0]-px[q])/p[0],(p[1]-px[q+1])/p[1],(p[2]-px[q+2])/p[2],0);
+    tone(px[q],px[q+1],px[q+2],p,norm,i*3);
+  }
+  Object.assign(S,{src,w,h,px,paper,diff,norm,erase:new Uint8Array(w*h),drawTex:null});
+}
+
+/* ---------- step 3: cut the character out ---------- */
+function buildMask(){
+  const {w,h,diff,erase}=S, n=w*h;
+  const hi=.34-(+$('sens').value/100)*.29, lo=hi*.55;
+  let m=new Uint8Array(n); const stack=new Int32Array(n); let sp=0;
+  for(let i=0;i<n;i++) if(diff[i]>hi){m[i]=1;stack[sp++]=i;}
+  while(sp){
+    const i=stack[--sp], x=i%w, y=(i-x)/w;
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=w||ny>=h) continue;
+      const j=ny*w+nx; if(!m[j]&&diff[j]>lo){m[j]=1;stack[sp++]=j;}
+    }
+  }
+  for(let i=0;i<n;i++) if(erase[i]) m[i]=0;
+  m=dilate(m,w,h,2);
+  // table edges and shadows touch the photo border; drop them when a real drawing sits inside
+  let L=label(m,w,h), inner=0;
+  for(let c=1;c<L.comps.length;c++) if(!L.comps[c].border) inner+=L.comps[c].area;
+  if(inner>n*.004) for(let i=0;i<n;i++) if(m[i]&&L.comps[L.lab[i]].border) m[i]=0;
+  m=fillHoles(m,w,h);
+  for(let i=0;i<n;i++) if(erase[i]) m[i]=0;
+  m=erode(m,w,h,1);
+  L=label(m,w,h); let big=0;
+  for(let c=1;c<L.comps.length;c++) big=Math.max(big,L.comps[c].area);
+  const minA=Math.max(40,big*.025); let area=0;
+  for(let i=0;i<n;i++){ if(m[i]&&L.comps[L.lab[i]].area<minA) m[i]=0; area+=m[i]; }
+  S.mask=m; S.maskArea=area;
+  return area>n*.003;
+}
+
+/* ---------- step 4: scatter points and triangulate ---------- */
+function pointGrid(w,h,c){
+  const gw=Math.ceil(w/c)+1, gh=Math.ceil(h/c)+1, cells=new Array(gw*gh), xs=[],ys=[],ts=[];
+  return {xs,ys,ts,
+    near(x,y,r,tm){
+      const r2=r*r, x0=Math.max(0,Math.floor((x-r)/c)), x1=Math.min(gw-1,Math.floor((x+r)/c)),
+            y0=Math.max(0,Math.floor((y-r)/c)), y1=Math.min(gh-1,Math.floor((y+r)/c));
+      for(let gy=y0;gy<=y1;gy++) for(let gx=x0;gx<=x1;gx++){
+        const a=cells[gy*gw+gx]; if(!a) continue;
+        for(const i of a){ if(!(ts[i]&tm)) continue; const dx=xs[i]-x, dy=ys[i]-y; if(dx*dx+dy*dy<r2) return true; }
+      }
+      return false;
+    },
+    add(x,y,t){ const i=xs.length; xs.push(x);ys.push(y);ts.push(t);
+      const k=Math.floor(y/c)*gw+Math.floor(x/c); (cells[k]||(cells[k]=[])).push(i); }
+  };
+}
+const BND=1, MED=2, FEAT=4, FILL=8, ALL=15;
+
+function buildMesh(){
+  const {w,h,mask,norm}=S;
+  const s=26-(+$('detail').value/100)*20;            // point spacing in work pixels
+  const puff=.12+(+$('puff').value/100)*.95;
+  const dist=distMap(mask,w,h);
+  let dmax=1, x0=w,y0=h,x1=0,y1=0;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const i=y*w+x; if(!mask[i]) continue;
+    if(dist[i]>dmax)dmax=dist[i]; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  const G=pointGrid(w,h,s), rnd=mulberry(7);
+
+  // how thin is the drawing here? (only worked out for thin parts such as stick arms and legs)
+  const isMed=i=>{const d=dist[i];return d>=1.5&&d>=dist[i-1]&&d>=dist[i+1]&&d>=dist[i-w]&&d>=dist[i+w]&&d>=dist[i-w-1]&&d>=dist[i-w+1]&&d>=dist[i+w-1]&&d>=dist[i+w+1];};
+  const thick=new Float32Array(w*h).fill(1e9);
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){ const i=y*w+x, d=dist[i];
+    if(!mask[i]||d>=12||!isMed(i)) continue; const r=Math.ceil(d)+1;
+    for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++) for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++){const j=yy*w+xx; if(d<thick[j])thick[j]=d;} }
+  // outline points, closer together where the drawing is thin
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const i=y*w+x;
+    if(mask[i]&&dist[i]<=1.01&&!G.near(x,y,Math.min(s*.85,Math.max(3,thick[i]*2.2)),BND)) G.add(x,y,BND); }
+  // spine points along the middle of every limb, so thin arms and legs get some depth
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){ const i=y*w+x, d=dist[i];
+    if(!mask[i]||!isMed(i)) continue;
+    if(!G.near(x,y,Math.min(s*.9,Math.max(3,d*2.5)),MED)&&!G.near(x,y,Math.min(s*.3,d*.8),BND)) G.add(x,y,MED); }
+  // points along pen lines and colour edges inside the drawing
+  const cand=[];
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){ const i=y*w+x;
+    if(!mask[i]||dist[i]<3) continue; let g=0;
+    for(let c=0;c<3;c++){ const a=Math.abs(norm[(i+1)*3+c]-norm[(i-1)*3+c])+Math.abs(norm[(i+w)*3+c]-norm[(i-w)*3+c]); if(a>g)g=a; }
+    if(g>60) cand.push(g*1048576+i);
+  }
+  cand.sort((a,b)=>b-a);
+  for(const c of cand){ const i=c%1048576, x=i%w, y=(i-x)/w;
+    if(!G.near(x,y,s*.6,MED|FEAT|FILL)&&!G.near(x,y,s*.35,BND)) G.add(x,y,FEAT); }
+  // fill the gaps
+  for(let gy=y0;gy<=y1;gy+=s) for(let gx=x0;gx<=x1;gx+=s){
+    const x=Math.round(gx+(rnd()-.5)*s*.7), y=Math.round(gy+(rnd()-.5)*s*.7);
+    if(x<0||y<0||x>=w||y>=h||!mask[y*w+x]) continue;
+    if(!G.near(x,y,s*.72,ALL)) G.add(x,y,FILL);
+  }
+  const n=G.xs.length; if(n<3) return null;
+  const coords=new Float64Array(n*2);
+  for(let i=0;i<n;i++){coords[i*2]=G.xs[i]+(rnd()-.5)*.01;coords[i*2+1]=G.ys[i]+(rnd()-.5)*.01;}
+  const T=new Delaunator(coords).triangles;
+
+  const md=dilate(mask,w,h,1);
+  const inside=(x,y)=>{x=Math.round(x);y=Math.round(y);return x>=0&&y>=0&&x<w&&y<h&&md[y*w+x]===1;};
+  const tris=[], cols=[];
+  for(let t=0;t<T.length;t+=3){
+    const a=T[t],b=T[t+1],c=T[t+2];
+    const ax=G.xs[a],ay=G.ys[a],bx=G.xs[b],by=G.ys[b],cx=G.xs[c],cy=G.ys[c];
+    const mx=(ax+bx+cx)/3,my=(ay+by+cy)/3;
+    if(!inside(mx,my)) continue;
+    const e=(inside((ax+bx)/2,(ay+by)/2)?1:0)+(inside((bx+cx)/2,(by+cy)/2)?1:0)+(inside((ax+cx)/2,(ay+cy)/2)?1:0);
+    if(e<2) continue;
+    let r=0,g=0,bl=0,k=0, need=2.5;
+    const samp=(x,y)=>{x=Math.max(0,Math.min(w-1,Math.round(x)));y=Math.max(0,Math.min(h-1,Math.round(y)));
+      if(dist[y*w+x]<need) return; const o=(y*w+x)*3;r+=norm[o];g+=norm[o+1];bl+=norm[o+2];k++;};
+    for(const nd of [2.5,1.5,0]){ need=nd;
+      samp(mx,my);samp(mx,my);
+      samp((mx+ax)/2,(my+ay)/2);samp((mx+bx)/2,(my+by)/2);samp((mx+cx)/2,(my+cy)/2);
+      samp((mx*2+ax+bx)/4,(my*2+ay+by)/4);samp((mx*2+bx+cx)/4,(my*2+by+cy)/4);samp((mx*2+ax+cx)/4,(my*2+ay+cy)/4);
+      samp(ax,ay);samp(bx,by);samp(cx,cy);
+      if(k) break; }
+    tris.push(a,b,c); cols.push(r/k|0,g/k|0,bl/k|0);
+  }
+  if(!tris.length) return null;
+  const z=new Float32Array(n);
+  for(let i=0;i<n;i++){ const d0=Math.max(0,dist[G.ys[i]*w+G.xs[i]]-1); z[i]=puff*Math.min(Math.sqrt(d0*dmax),2.2*d0); }
+  return {xs:G.xs,ys:G.ys,z,tris,cols,box:[x0,y0,x1,y1]};
+}
+
+/* ---------- step 5: textures ---------- */
+function facetTexture(M){
+  const {w,h}=S, k=TEX/Math.max(w,h), c=document.createElement('canvas');
+  c.width=Math.round(w*k); c.height=Math.round(h*k);
+  const x=c.getContext('2d'); let r=0,g=0,b=0; const nt=M.cols.length/3;
+  for(let i=0;i<nt;i++){r+=M.cols[i*3];g+=M.cols[i*3+1];b+=M.cols[i*3+2];}
+  x.fillStyle=`rgb(${r/nt|0},${g/nt|0},${b/nt|0})`; x.fillRect(0,0,c.width,c.height);
+  x.lineJoin='round'; x.lineWidth=2;
+  for(let i=0;i<nt;i++){
+    const a=M.tris[i*3],bb=M.tris[i*3+1],cc=M.tris[i*3+2];
+    x.fillStyle=x.strokeStyle=`rgb(${M.cols[i*3]},${M.cols[i*3+1]},${M.cols[i*3+2]})`;
+    x.beginPath(); x.moveTo((M.xs[a]+.5)*k,(M.ys[a]+.5)*k); x.lineTo((M.xs[bb]+.5)*k,(M.ys[bb]+.5)*k); x.lineTo((M.xs[cc]+.5)*k,(M.ys[cc]+.5)*k);
+    x.closePath(); x.fill(); x.stroke();
+  }
+  return c;
+}
+function drawingTexture(){
+  if(S.drawTex) return S.drawTex;
+  const {w,h,src,paper}=S, k=TEX/Math.max(w,h), c=document.createElement('canvas');
+  c.width=Math.round(w*k); c.height=Math.round(h*k);
+  const x=c.getContext('2d'); x.imageSmoothingQuality='high'; x.drawImage(src,0,0,c.width,c.height);
+  const id=x.getImageData(0,0,c.width,c.height), d=id.data, p=[0,0,0], o=[0,0,0];
+  for(let yy=0;yy<c.height;yy++) for(let xx=0;xx<c.width;xx++){
+    const i=(yy*c.width+xx)*4; paperAt(paper,xx/k,yy/k,p); tone(d[i],d[i+1],d[i+2],p,o,0);
+    d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];
+  }
+  x.putImageData(id,0,0);
+  return S.drawTex=c;
+}
+
+/* ---------- 3D scene ---------- */
+const glc=$('gl');
+const renderer=new THREE.WebGLRenderer({canvas:glc,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(38,1,.1,100);
+const controls=new OrbitControls(camera,glc);
+controls.enablePan=false; controls.enableDamping=true; controls.minDistance=2.2; controls.maxDistance=12;
+controls.autoRotate=true; controls.autoRotateSpeed=3;
+scene.add(new THREE.HemisphereLight(0xffffff,0x7a86b8,1.15));
+const sun=new THREE.DirectionalLight(0xffffff,1.9); sun.position.set(2.5,4,5); scene.add(sun);
+const rim=new THREE.DirectionalLight(0xfff0d0,1.1); rim.position.set(-3,2,-5); scene.add(rim);
+
+const shCv=document.createElement('canvas'); shCv.width=shCv.height=128;
+{ const x=shCv.getContext('2d'), g=x.createRadialGradient(64,64,4,64,64,62);
+  g.addColorStop(0,'rgba(20,22,60,.45)'); g.addColorStop(1,'rgba(20,22,60,0)'); x.fillStyle=g; x.fillRect(0,0,128,128); }
+const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shCv),transparent:true,depthWrite:false}));
+shadow.rotation.x=-Math.PI/2; scene.add(shadow);
+const holder=new THREE.Group(); scene.add(holder);
+let model=null, halfH=1, halfW=1;
+
+function fit(){
+  const W=glc.clientWidth, H=glc.clientHeight; if(!W||!H) return;
+  renderer.setSize(W,H,false); camera.aspect=W/H; camera.updateProjectionMatrix();
+}
+function frameCamera(){
+  const a=camera.aspect, t=Math.tan(camera.fov*Math.PI/360);
+  const need=Math.max((halfH*1.9)/t,(halfW*1.5)/(t*a));
+  camera.position.set(0,.25,need+.4); controls.target.set(0,-.25,0); controls.update();
+}
+addEventListener('resize',()=>{fit();});
+
+function buildModel(){
+  const M=buildMesh();
+  if(!M){ toast("I couldn't make a shape from that. Try Fix cut-out."); return false; }
+  const {w,h}=S, [x0,y0,x1,y1]=M.box, cx=(x0+x1)/2, cy=(y0+y1)/2, sc=2/Math.max(x1-x0,y1-y0,1);
+  const nt=M.tris.length/3, pos=new Float32Array(nt*18), uv=new Float32Array(nt*12);
+  let p=0,u=0;
+  const put=(i,sign)=>{ pos[p++]=(M.xs[i]-cx)*sc; pos[p++]=-(M.ys[i]-cy)*sc; pos[p++]=sign*M.z[i]*sc;
+    uv[u++]=(M.xs[i]+.5)/w; uv[u++]=1-(M.ys[i]+.5)/h; };
+  for(let t=0;t<nt;t++){
+    let a=M.tris[t*3], b=M.tris[t*3+1], c=M.tris[t*3+2];
+    // make the front face wind anticlockwise as seen from the front
+    const cr=(M.xs[b]-M.xs[a])*-(M.ys[c]-M.ys[a]) - -(M.ys[b]-M.ys[a])*(M.xs[c]-M.xs[a]);
+    if(cr<0){const q=b;b=c;c=q;}
+    put(a,1);put(b,1);put(c,1); put(a,-1);put(c,-1);put(b,-1);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  geo.computeVertexNormals();
+  const tex=new THREE.CanvasTexture(S.style==='facets'?facetTexture(M):drawingTexture());
+  tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=4;
+  const mat=new THREE.MeshStandardMaterial({map:tex,roughness:.82,metalness:0,flatShading:true});
+  if(model){ holder.remove(model); model.geometry.dispose(); if(model.material.map.image!==S.drawTex){} model.material.map.dispose(); model.material.dispose(); }
+  model=new THREE.Mesh(geo,mat); model.name='PaperToPolyCharacter'; holder.add(model);
+  const first=!S.ready;
+  halfH=(y1-y0)*sc/2; halfW=(x1-x0)*sc/2;
+  shadow.position.y=-halfH-.03; shadow.scale.set(halfW*2.6+.5,halfW*1.6+.5,1);
+  $('count').textContent=(nt*2).toLocaleString()+' triangles';
+  S.ready=true;
+  if(first||S.reframe){ S.reframe=false; frameCamera(); }
+  return true;
+}
+
+let t0=performance.now();
+function tick(now){
+  requestAnimationFrame(tick);
+  const t=(now-t0)/1000;
+  controls.autoRotate=S.spin; controls.update();
+  if(S.dance){
+    const b=Math.abs(Math.sin(t*5.5));
+    holder.position.y=b*.28; holder.rotation.z=Math.sin(t*5.5)*.16;
+    const sq=1-(1-b)*.12; holder.scale.set(1+(1-sq)*.8,sq,1+(1-sq)*.8);
+    shadow.material.opacity=1-b*.5;
+  }else{
+    holder.position.y=Math.sin(t*1.6)*.03; holder.rotation.z=0; holder.scale.set(1,1,1); shadow.material.opacity=1;
+  }
+  renderer.render(scene,camera);
+}
+
+/* ---------- scenes ---------- */
+const SCENES=[['#ffd9a8','#ff8f70'],['#c9ecff','#7aa8ff'],['#dcffd2','#59c9a5'],['#3a3f86','#0d0f24'],['#fff6e5','#ecd6b0'],['#ffd1ec','#b98bff']];
+function applyScene(){ const s=SCENES[S.scene]; $('stage').style.background=`linear-gradient(${s[0]},${s[1]})`; }
+
+/* ---------- flow ---------- */
+let toastT=0;
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,4200); }
+
+function useSource(source){
+  loadSource(source);
+  if(!buildMask()){ toast("I couldn't find a drawing. Try a darker pen, and fill the screen with the paper."); return; }
+  S.reframe=true;
+  $('start').hidden=true; fit();
+  if(buildModel()) $('bBack').hidden=false;
+}
+async function useFile(file){
+  if(!file) return;
+  try{
+    let bmp;
+    try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }
+    catch{ bmp=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=URL.createObjectURL(file);}); }
+    useSource(bmp);
+  }catch(e){ console.error(e); toast("I couldn't open that photo. Try another one."); }
+}
+$('bCam').onclick=()=>$('fCam').click();
+$('bPick').onclick=()=>$('fPick').click();
+$('fCam').onchange=e=>{useFile(e.target.files[0]);e.target.value='';};
+$('fPick').onchange=e=>{useFile(e.target.files[0]);e.target.value='';};
+$('bSample').onclick=()=>useSource(sampleDrawing());
+$('bNew').onclick=()=>{$('start').hidden=false;};
+$('bBack').onclick=()=>{$('start').hidden=true;};
+
+let pending=false;
+function rebuildSoon(){ if(pending||!S.ready) return; pending=true; requestAnimationFrame(()=>{pending=false;buildModel();}); }
+$('detail').oninput=rebuildSoon; $('puff').oninput=rebuildSoon;
+$('bSpin').onclick=()=>{S.spin=!S.spin;$('bSpin').classList.toggle('on',S.spin);};
+$('bDance').onclick=()=>{S.dance=!S.dance;$('bDance').classList.toggle('on',S.dance);};
+$('bStyle').onclick=()=>{S.style=S.style==='facets'?'drawing':'facets';$('bStyle').textContent='Look: '+(S.style==='facets'?'Facets':'My drawing');buildModel();};
+$('bScene').onclick=()=>{S.scene=(S.scene+1)%SCENES.length;applyScene();};
+
+/* ---------- fix cut-out ---------- */
+const fixCv=$('fixCv'); let fixPending=false;
+function drawFix(){
+  const {w,h,px,mask}=S; fixCv.width=w; fixCv.height=h;
+  const x=fixCv.getContext('2d'), id=x.createImageData(w,h), d=id.data;
+  for(let i=0;i<w*h;i++){ const q=i*4;
+    if(mask[i]){d[q]=px[q];d[q+1]=px[q+1];d[q+2]=px[q+2];}
+    else{d[q]=px[q]*.3+10;d[q+1]=px[q+1]*.3+12;d[q+2]=px[q+2]*.3+40;}
+    d[q+3]=255; }
+  x.putImageData(id,0,0);
+}
+function refix(){ if(fixPending) return; fixPending=true; requestAnimationFrame(()=>{fixPending=false;buildMask();drawFix();}); }
+$('bFix').onclick=()=>{ if(!S.ready) return; $('fix').hidden=false; drawFix(); };
+$('sens').oninput=refix;
+$('bUnrub').onclick=()=>{S.erase.fill(0);refix();};
+$('bFixDone').onclick=()=>{
+  $('fix').hidden=true;
+  if(!buildMask()){ toast('Nothing left! I put your rubbing back.'); S.erase.fill(0); buildMask(); }
+  S.reframe=true; buildModel();
+};
+function rub(e){
+  const r=fixCv.getBoundingClientRect(), {w,h,erase}=S;
+  const cx=(e.clientX-r.left)/r.width*w, cy=(e.clientY-r.top)/r.height*h, R=Math.max(7,w*.035);
+  for(let y=Math.max(0,cy-R|0);y<=Math.min(h-1,cy+R);y++) for(let x=Math.max(0,cx-R|0);x<=Math.min(w-1,cx+R);x++)
+    if((x-cx)*(x-cx)+(y-cy)*(y-cy)<=R*R) erase[y*w+x]=1;
+  refix();
+}
+let rubbing=false;
+fixCv.addEventListener('pointerdown',e=>{rubbing=true;fixCv.setPointerCapture(e.pointerId);rub(e);});
+fixCv.addEventListener('pointermove',e=>{if(rubbing)rub(e);});
+fixCv.addEventListener('pointerup',()=>rubbing=false);
+fixCv.addEventListener('pointercancel',()=>rubbing=false);
+
+/* ---------- saving ---------- */
+async function giveFile(blob,name){
+  const file=new File([blob],name,{type:blob.type});
+  if(navigator.canShare&&navigator.canShare({files:[file]})&&/iPad|iPhone|Macintosh.*Mobile|Android/.test(navigator.userAgent+(navigator.maxTouchPoints>1?' Mobile':''))){
+    try{ await navigator.share({files:[file]}); return; }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),20000);
+}
+$('bPic').onclick=()=>{
+  if(!model) return;
+  renderer.render(scene,camera);
+  const c=document.createElement('canvas'); c.width=glc.width; c.height=glc.height;
+  const x=c.getContext('2d'), s=SCENES[S.scene], g=x.createLinearGradient(0,0,0,c.height);
+  g.addColorStop(0,s[0]); g.addColorStop(1,s[1]); x.fillStyle=g; x.fillRect(0,0,c.width,c.height);
+  x.drawImage(glc,0,0);
+  c.toBlob(b=>giveFile(b,'paper-to-poly.png'),'image/png');
+};
+function exportClone(scale){
+  const m=new THREE.Mesh(model.geometry,new THREE.MeshStandardMaterial({map:model.material.map,roughness:.82,metalness:0}));
+  m.name='PaperToPolyCharacter'; m.scale.setScalar(scale); m.position.y=halfH*scale;
+  const sc=new THREE.Scene(); sc.add(m); sc.updateMatrixWorld(true); return sc;
+}
+$('bGlb').onclick=()=>{
+  if(!model) return;
+  new GLTFExporter().parse(exportClone(1),buf=>giveFile(new Blob([buf],{type:'model/gltf-binary'}),'paper-to-poly.glb'),
+    e=>{console.error(e);toast("Sorry, I couldn't save the 3D model.");},{binary:true});
+};
+const arProbe=document.createElement('a');
+if(arProbe.relList&&arProbe.relList.supports&&arProbe.relList.supports('ar')) $('bAR').hidden=false;
+$('bAR').onclick=async()=>{
+  if(!model) return;
+  try{
+    const ex=new USDZExporter(), sc=exportClone(.15);
+    const data=ex.parseAsync?await ex.parseAsync(sc):await ex.parse(sc);
+    const a=document.createElement('a'); a.rel='ar'; a.href=URL.createObjectURL(new Blob([data],{type:'model/vnd.usdz+zip'}));
+    a.download='paper-to-poly.usdz'; a.appendChild(document.createElement('img')); a.click();
+  }catch(e){ console.error(e); toast("Sorry, the room view didn't work this time."); }
+};
+
+/* ---------- a sample drawing, for trying things without a camera ---------- */
+function sampleDrawing(){
+  const c=document.createElement('canvas'); c.width=900; c.height=1200; const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,900,1200); g.addColorStop(0,'#f6f3ea'); g.addColorStop(1,'#cfcabd'); x.fillStyle=g; x.fillRect(0,0,900,1200);
+  x.lineCap=x.lineJoin='round';
+  const wob=(pts,close)=>{x.beginPath();pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));if(close)x.closePath();};
+  const blob=(cx,cy,rx,ry,n=40,j=7)=>{const p=[];for(let i=0;i<n;i++){const a=i/n*Math.PI*2;p.push([cx+Math.cos(a)*(rx+Math.sin(i*2.3)*j),cy+Math.sin(a)*(ry+Math.cos(i*1.7)*j)]);}return p;};
+  x.strokeStyle='#23232b'; x.lineWidth=13;
+  [[[330,820],[300,1010],[240,1030]],[[570,820],[600,1010],[670,1025]],[[215,560],[110,470],[90,380]],[[690,560],[800,640],[830,720]],[[450,300],[440,190]]].forEach(l=>{wob(l);x.stroke();});
+  wob(blob(450,580,250,280),true); x.fillStyle='#f39a2b'; x.fill(); x.stroke();
+  wob(blob(450,690,150,110,30,4),true); x.fillStyle='#ffd866'; x.fill();
+  wob(blob(440,170,38,38,20,3),true); x.fillStyle='#e8433a'; x.fill(); x.stroke();
+  [[360,500],[540,500]].forEach(p=>{wob(blob(p[0],p[1],46,54,24,3),true);x.fillStyle='#fdfdf8';x.fill();x.lineWidth=9;x.stroke();
+    wob(blob(p[0]+8,p[1]+8,17,19,14,1),true);x.fillStyle='#23232b';x.fill();});
+  x.lineWidth=11; x.beginPath(); x.arc(450,640,95,.15*Math.PI,.85*Math.PI); x.stroke();
+  x.strokeStyle='#3c7be0'; x.lineWidth=16; wob([[300,360],[380,330],[450,365],[520,330],[600,360]]); x.stroke();
+  return c;
+}
+
+applyScene(); fit(); requestAnimationFrame(tick);
+window.__ptp={S,useSource,sampleDrawing,buildModel};
+const Q=new URLSearchParams(location.search);
+if(Q.has('sample')){
+  if(Q.get('detail')) $('detail').value=Q.get('detail');
+  if(Q.get('look')==='drawing'){ S.style='drawing'; $('bStyle').textContent='Look: My drawing'; }
+  if(Q.has('still')) S.spin=false;
+  useSource(sampleDrawing());
+  if(Q.get('turn')){ const a=+Q.get('turn')*Math.PI/180, d=camera.position.z; camera.position.set(Math.sin(a)*d,.6,Math.cos(a)*d); controls.update(); }
+  if(Q.has('fix')) $('bFix').click();
+}
+</script>
+</body>
+</html>
